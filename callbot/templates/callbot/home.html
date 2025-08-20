@@ -1,0 +1,156 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>Multi-Agent AI Call Center</title>
+<script src="https://code.jquery.com/jquery-3.6.0.min.js"></script>
+<style>
+table { border-collapse: collapse; width: 100%; }
+th, td { border: 1px solid #ddd; padding: 8px; }
+th { background-color: #f2f2f2; }
+form input, form textarea, form select {
+    width: 100%;
+    padding: 6px;
+    margin-bottom: 8px;
+    box-sizing: border-box;
+}
+button {
+    padding: 8px 12px;
+    background-color: #4CAF50;
+    color: white;
+    border: none;
+    cursor: pointer;
+}
+button:hover {
+    background-color: #45a049;
+}
+</style>
+</head>
+<body>
+<h2>Multi-Agent AI Call Center Dashboard</h2>
+
+<h3>Enter AMI Credentials & Script</h3>
+<form id="credForm" method="post">
+    {% csrf_token %}
+
+    <label>AMI Host:</label>
+    <input type="text" name="ami_host" value="{{ saved_creds.ami_host|default_if_none:'' }}">
+
+    <label>AMI Port:</label>
+    <input type="number" name="ami_port" value="{{ saved_creds.ami_port|default_if_none:5038 }}">
+
+    <label>AMI User:</label>
+    <input type="text" name="ami_user" value="{{ saved_creds.ami_user|default_if_none:'' }}">
+
+    <label>AMI Password:</label>
+    <input type="password" name="ami_pass" value="{{ saved_creds.ami_pass|default_if_none:'' }}">
+
+    <label>SIP Endpoint:</label>
+    <input type="text" name="sip_endpoint" value="{{ saved_creds.sip_endpoint|default_if_none:'' }}">
+
+    <label>Country:</label>
+    <input type="text" name="country" value="{{ saved_script.country|default_if_none:'' }}">
+
+    <label>Script Text:</label>
+    <textarea name="script_text" rows="6">{{ saved_script.script_text|default_if_none:'' }}</textarea>
+
+    <label>Destination Number (Exten):</label>
+    <input type="text" name="exten" value="{{ saved_script.exten|default_if_none:'1000' }}">
+
+    <label>Caller ID:</label>
+    <input type="text" name="caller_id" value="{{ saved_script.caller_id|default_if_none:'AI Call Center' }}">
+
+    <button type="submit">💾 Save & Start Call</button>
+</form>
+
+<h3>Live Call Queue</h3>
+<div id="queueTable">
+    <table>
+        <thead>
+            <tr><th>Script</th><th>Country</th><th>Status</th><th>Timestamp</th></tr>
+        </thead>
+        <tbody id="queueBody">
+        {% for q in queue %}
+        <tr>
+            <td>{{ q.script.script_text }}</td>
+            <td>{{ q.script.country }}</td>
+            <td>{{ q.status }}</td>
+            <td>{{ q.timestamp }}</td>
+        </tr>
+        {% endfor %}
+        </tbody>
+    </table>
+</div>
+
+<h3>Call Logs</h3>
+<div id="logsList">
+    <ul id="logsBody">
+    {% for log in logs %}
+        <li>
+            {{ log.timestamp }} - {{ log.user_script.country }} - {{ log.ai_response }} 
+            - Audio: <a href="{{ log.audio_path }}">{{ log.audio_path }}</a>
+        </li>
+    {% endfor %}
+    </ul>
+</div>
+
+<script>
+// Render Queue dynamically
+function renderQueue(queue) {
+    let rows = "";
+    queue.forEach(q => {
+        rows += `<tr>
+                    <td>${q.script_text || ''}</td>
+                    <td>${q.country || ''}</td>
+                    <td>${q.status}</td>
+                    <td>${q.timestamp}</td>
+                 </tr>`;
+    });
+    $("#queueBody").html(rows);
+}
+
+// Render Logs dynamically
+function renderLogs(logs) {
+    let items = "";
+    logs.forEach(l => {
+        items += `<li>${l.timestamp} - ${l.country || ''} - ${l.ai_response} 
+                  - Audio: <a href="${l.audio_path}">${l.audio_path}</a></li>`;
+    });
+    $("#logsBody").html(items);
+}
+
+// AJAX form submit
+$('#credForm').submit(function(e){
+    e.preventDefault();
+    $.ajax({
+        type: 'POST',
+        url: "{% url 'save_form' %}",
+        data: $(this).serialize(),
+        success: function(data){
+            if(data.status === "success"){
+                alert(data.msg);
+            } else if(data.status === "error") {
+                alert("⚠️ Errors: " + JSON.stringify(data.errors));
+            }
+            // Refresh Queue & Logs
+            $.get("{% url 'get_queue_logs' %}", function(data){
+                if(data.queue) renderQueue(data.queue);
+                if(data.logs) renderLogs(data.logs);
+            });
+        },
+        error: function(xhr){
+            alert("❌ Error saving form: " + xhr.responseText);
+        }
+    });
+});
+
+// Auto refresh queue & logs every 5 seconds
+setInterval(function(){
+    $.get("{% url 'get_queue_logs' %}", function(data){
+        if(data.queue) renderQueue(data.queue);
+        if(data.logs) renderLogs(data.logs);
+    });
+}, 5000);
+</script>
+</body>
+</html>
